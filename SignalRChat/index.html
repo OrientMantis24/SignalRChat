@@ -12,11 +12,18 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <input type="text" id="message" />
-        <input type="button" id="sendmessage" value="Send" />
-        <input type="hidden" id="displayname" />
+    <div id="login">
+        <input type="text" id="txtNickName" />
+        <input id="btnStartChat" type="button" class="submitButton" value="Start Chat" />
+    </div>
+    <div id="chat">
+        <span id="username" ></span>
+        <div id="users">Użytkownicy<br /></div>
+        <input type="text" id="txtMessage" />
+        <input type="button" id="btnSendMsg" value="Send" />
+        <div id="messages"></div>
         <ul id="discussion"></ul>
+        <div id="usernameHelper" hidden></div>
     </div>
     <!--Script references. -->
     <!--Reference the jQuery library. -->
@@ -28,10 +35,29 @@
     <!--Add script to update the page and send messages.-->
     <script type="text/javascript">
         $(function () {
+            setScreen(false);
             // Declare a proxy to reference the hub.
-            var chat = $.connection.chatHub;
+            var chatHub = $.connection.chatHub;
+
+            registerClientMethods(chatHub);
+
+            //Showing or hiding Login prompt
+            function setScreen(isLogin) {
+
+                if (!isLogin) {
+
+                    $("#chat").hide();
+                    $("#login").show();
+                }
+                else {
+
+                    $("#chat").show();
+                    $("#login").hide();
+                }
+
+            }
             // Create a function that the hub can call to broadcast messages.
-            chat.client.broadcastMessage = function (name, message) {
+            chatHub.client.broadcastMessage = function (name, message) {
                 // Html encode display name and message.
                 var encodedName = $('<div />').text(name).html();
                 var encodedMsg = $('<div />').text(message).html();
@@ -39,19 +65,89 @@
                 $('#discussion').append('<li><strong>' + encodedName
                     + '</strong>:&nbsp;&nbsp;' + encodedMsg + '</li>');
             };
-            // Get the user name and store it to prepend to messages.
-            $('#displayname').val(prompt('Enter your name:', ''));
-            // Set initial focus to message input box.
-            $('#message').focus();
             // Start the connection.
             $.connection.hub.start().done(function () {
-                $('#sendmessage').click(function () {
-                    // Call the Send method on the hub.
-                    chat.server.send($('#displayname').val(), $('#message').val());
-                    // Clear text box and reset focus for next comment.
-                    $('#message').val('').focus();
-                });
+                registerEvents(chatHub)
             });
+
+            function registerEvents(chatHub) {
+
+                $("#btnStartChat").click(function () {
+
+                    var name = $("#txtNickName").val();
+                    if (name.length > 0) {
+                        chatHub.server.connect(name);
+                    }
+                    else {
+                        alert("Please enter name");
+                    }
+
+                });
+
+                $('#btnSendMsg').click(function () {
+
+                    var msg = $("#txtMessage").val();
+                    if (msg.length > 0) {
+
+                        var userName = $('#usernameHelper').val();
+                        chatHub.server.sendMessageToAll(userName, msg);
+                        $("#txtMessage").val('');
+                    }
+                });
+            }
+
+            function registerClientMethods(chatHub)
+            {
+                chatHub.client.onConnected = function (id, userName, allUsers, messages) {
+                    setScreen(true);
+
+                    $('#username').html("Twoja nazwa użytkownika: " + userName);
+                    $('#usernameHelper').val(userName);
+
+                    // Add All Users
+                    for (i = 0; i < allUsers.length; i++) {
+
+                        AddUser(chatHub, allUsers[i].ConnectionId, allUsers[i].Username);
+                    }
+
+                    // Add Existing Messages
+                    for (i = 0; i < messages.length; i++) {
+
+                        AddMessage(messages[i].Username, messages[i].Message, messages[i].Date);
+                    }
+                }
+
+                // On New User Connected
+                chatHub.client.onNewUserConnected = function (id, name) {
+
+                    AddUser(chatHub, id, name);
+                }
+
+                //On User Disconnected
+                chatHub.client.onUserDisconnected = function (id, name) {
+                    $('#' + id).remove();
+                }
+
+                //Receive Message
+                chatHub.client.messageReceived = function (username, message, date) {
+                    AddMessage(username, message, date);
+                }
+            }
+
+            function AddUser(chatHub, id, name) {
+                var code = $('<div id="' + id + '">' + name + "</div>");;
+                $("#users").append(code);
+            }
+
+            function AddMessage(userName, message, date) {
+                $('#messages').append('<div class="message">' + date + '<br><span class="userName">' + userName + '</span>: ' + message + '</div>');
+
+                var height = $('#messages')[0].scrollHeight;
+                $('#messages').scrollTop(height);
+            }
+
+
+
         });
     </script>
 </body>
